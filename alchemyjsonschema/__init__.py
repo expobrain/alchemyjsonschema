@@ -1,13 +1,15 @@
 # -*- coding:utf-8 -*-
 import logging
 from collections import OrderedDict
+from typing import Iterator
+
 import sqlalchemy.types as t
 from sqlalchemy.inspection import inspect
+from sqlalchemy.orm.base import MANYTOMANY, MANYTOONE, ONETOMANY
 from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.orm.relationships import RelationshipProperty
-from sqlalchemy.sql.visitors import VisitableType
-from sqlalchemy.orm.base import ONETOMANY, MANYTOONE, MANYTOMANY
 from sqlalchemy.sql.type_api import TypeEngine
+from sqlalchemy.sql.visitors import VisitableType
 
 logger = logging.getLogger(__name__)
 
@@ -163,9 +165,17 @@ class BaseModelWalker(object):
 
 
 class ForeignKeyWalker(BaseModelWalker):
-    def iterate(self):
+    def iterate(self) -> Iterator[ColumnProperty]:
         for c in self.mapper.local_table.columns:
-            yield self.mapper._props[c.name]  # danger!! not immutable
+            if c.name not in self.mapper._props:
+                for prop in self.mapper.iterate_properties:
+                    if isinstance(prop, ColumnProperty):
+                        columns = {column.name for column in prop.columns}
+
+                        if c.name in columns:
+                            yield prop  # danger!! not immutable
+            else:
+                yield self.mapper._props[c.name]  # danger!! not immutable
 
     def walk(self):
         for prop in self.iterate():
@@ -175,9 +185,17 @@ class ForeignKeyWalker(BaseModelWalker):
 
 
 class NoForeignKeyWalker(BaseModelWalker):
-    def iterate(self):
+    def iterate(self) -> Iterator[ColumnProperty]:
         for c in self.mapper.local_table.columns:
-            yield self.mapper._props[c.name]  # danger!! not immutable
+            if c.name not in self.mapper._props:
+                for prop in self.mapper.iterate_properties:
+                    if isinstance(prop, ColumnProperty):
+                        columns = {column.name for column in prop.columns}
+
+                        if c.name in columns:
+                            yield prop  # danger!! not immutable
+            else:
+                yield self.mapper._props[c.name]  # danger!! not immutable
 
     def walk(self):
         for prop in self.iterate():
@@ -189,9 +207,16 @@ class NoForeignKeyWalker(BaseModelWalker):
 
 class StructuralWalker(BaseModelWalker):
     def iterate(self):
-        # self.mapper.attrs
         for c in self.mapper.local_table.columns:
-            yield self.mapper._props[c.name]  # danger!! not immutable
+            if c.name not in self.mapper._props:
+                for prop in self.mapper.iterate_properties:
+                    if isinstance(prop, ColumnProperty):
+                        columns = {column.name for column in prop.columns}
+
+                        if c.name in columns:
+                            yield prop  # danger!! not immutable
+            else:
+                yield self.mapper._props[c.name]  # danger!! not immutable
         for prop in self.mapper.relationships:
             yield prop
 
@@ -461,7 +486,8 @@ class SchemaFactory(object):
                             D[c.name] = sub
                         else:
                             raise NotImplemented
-                    D[prop.key] = sub
+                    # fixme: remove me???
+                    # D[prop.key] = sub
                 else:  # immediate
                     D[prop.key] = action
         return D
@@ -470,12 +496,14 @@ class SchemaFactory(object):
         r = []
         for prop in walker.walk():
             columns = getattr(prop, "columns", Empty)
-            required = any(
-                not c.nullable and (c.default is None and c.server_default is None)
-                for c in columns
-            )
-            if adjust_required is not None:
-                required = adjust_required(prop, required)
-            if required:
-                r.append(prop.key)
+
+            for column in columns:
+                required = not column.nullable and (
+                    column.default is None and column.server_default is None
+                )
+
+                if adjust_required is not None:
+                    required = adjust_required(prop, required)
+                if required:
+                    r.append(column.key)
         return r
