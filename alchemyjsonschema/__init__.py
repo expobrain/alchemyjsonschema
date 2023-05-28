@@ -2,6 +2,7 @@
 import logging
 from collections import OrderedDict
 import sqlalchemy.types as t
+from sqlalchemy.dialects import postgresql as postgresql_types
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm.properties import ColumnProperty
 from sqlalchemy.orm.relationships import RelationshipProperty
@@ -59,6 +60,7 @@ default_column_to_schema = {
     t.UnicodeText: "string",
     t.Interval: "xxx",
     t.Enum: "string",
+    postgresql_types.UUID: "string",
 }
 
 
@@ -87,6 +89,9 @@ def date_format(column, sub):
 def time_format(column, sub):
     sub["format"] = "time"
 
+def uuid_format(column, sub):
+    sub["format"] = "uuid"
+
 
 default_restriction_dict = {
     t.String: string_max_length,
@@ -94,6 +99,7 @@ default_restriction_dict = {
     t.DateTime: datetime_format,
     t.Date: date_format,
     t.Time: time_format,
+    postgresql_types.UUID: uuid_format,
 }
 
 
